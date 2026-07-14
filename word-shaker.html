@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Word Shaker</title>
+<style>
+  :root{
+    --felt:#1b2a2e; --felt-hi:#28414a;
+    --bone:#f2ead8; --bone-dim:#d6cbb2;
+    --ink:#241d16; --brass:#c9a24a; --glass:#9fd4e2;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:radial-gradient(120% 90% at 50% 8%, var(--felt-hi) 0%, var(--felt) 55%, #0d1618 100%);
+    color:var(--bone-dim);
+    font-family:ui-sans-serif,"Helvetica Neue",Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:28px;padding:24px;overflow:hidden;
+  }
+  header{letter-spacing:.34em;text-transform:uppercase;font-size:11px;font-weight:600;color:#8aa0a4}
+
+  #stage{perspective:1800px;perspective-origin:50% 50%;width:520px;height:440px;
+         display:flex;align-items:center;justify-content:center}
+  #world{position:relative;width:0;height:0;transform-style:preserve-3d;transform:rotateX(-88deg)}
+  #world > *{position:absolute;transform-style:preserve-3d}
+
+  #tray{
+    width:376px;height:376px;left:-188px;top:-188px;
+    transform:rotateX(90deg) translateZ(1px);
+    background:linear-gradient(160deg,#5b422c,#33241a);
+    border-radius:10px;box-shadow:0 0 0 4px #23180f inset;
+    display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:14px;
+  }
+  .cell{border-radius:5px;background:#2a1d13;
+        box-shadow:inset 0 3px 6px rgba(0,0,0,.75),0 1px 0 rgba(255,255,255,.05)}
+
+  .glass{
+    background:linear-gradient(200deg,rgba(159,212,226,.16),rgba(159,212,226,.04));
+    border:1px solid rgba(180,225,235,.30);
+    box-shadow:inset 0 0 40px rgba(159,212,226,.08);
+  }
+  #shaker{transition:opacity .55s ease}
+  #shaker.hidden{opacity:0}
+
+  .die{width:62px;height:62px;left:-31px;top:-31px}
+  .face{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(150deg,var(--bone) 0%,#e2d7bd 100%);
+    border-radius:9px;
+    box-shadow:inset 0 0 0 1px rgba(90,70,40,.35),inset 0 -6px 10px rgba(120,95,55,.22);
+    color:var(--ink);font-family:Helvetica,"Helvetica Neue",Arial,sans-serif;
+    font-weight:700;font-size:44px;backface-visibility:hidden;
+  }
+  .face span{border-bottom:3px solid transparent;line-height:1;padding-bottom:2px}
+  .face span.mark{border-bottom-color:var(--ink)}
+  .face .qu{font-size:34px;letter-spacing:-.03em}
+
+  .shadow{width:62px;height:62px;left:-31px;top:-31px;border-radius:50%;
+          background:radial-gradient(closest-side,rgba(0,0,0,.6),rgba(0,0,0,0) 72%)}
+
+  button{
+    font:inherit;font-size:12px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;
+    color:#12211f;background:var(--brass);border:0;border-radius:999px;padding:13px 30px;
+    cursor:pointer;box-shadow:0 6px 0 #8a6c2a,0 12px 22px rgba(0,0,0,.45);
+    transition:transform .08s ease,box-shadow .08s ease;
+  }
+  button:active{transform:translateY(4px);box-shadow:0 2px 0 #8a6c2a,0 6px 12px rgba(0,0,0,.45)}
+  button:disabled{opacity:.4;cursor:default}
+  button:focus-visible{outline:3px solid var(--glass);outline-offset:3px}
+
+  #readout{font-family:ui-monospace,Menlo,monospace;font-size:13px;letter-spacing:.3em;
+           color:#7f939a;min-height:1.2em;white-space:pre;text-align:center}
+
+  /* control bar + ring timer */
+  .bar{display:flex;align-items:center;gap:26px}
+  #timer{position:relative;width:64px;height:64px;display:none}
+  #timer.on{display:block}
+  #timer svg{transform:rotate(-90deg)}
+  #timer .track{fill:none;stroke:rgba(255,255,255,.10);stroke-width:5}
+  #timer .left{fill:none;stroke:var(--brass);stroke-width:5;stroke-linecap:round;
+               stroke-dasharray:1;stroke-dashoffset:0;transition:stroke .4s}
+  #timer.late .left{stroke:#d96a4a}
+  #clock{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+         font-family:ui-monospace,Menlo,monospace;font-size:15px;font-weight:700;
+         color:var(--bone-dim);letter-spacing:.04em}
+  #timer.late #clock{color:#e8917a}
+
+  /* time's up: dim the cubes but leave every letter readable for scoring */
+  #world.over .face{
+    background:linear-gradient(150deg,#8e8674 0%,#7a715e 100%);
+    color:rgba(36,29,22,.62);
+    box-shadow:inset 0 0 0 1px rgba(40,32,20,.4),inset 0 -6px 10px rgba(40,32,20,.25);
+    transition:background .9s ease,color .9s ease;
+  }
+  #world.over .face span.mark{border-bottom-color:rgba(36,29,22,.62)}
+
+  @media (max-width:560px){ #stage{width:100%;height:360px;transform:scale(.72)} }
+
+  /* help + rules modal */
+  #help{
+    position:fixed;top:16px;right:16px;
+    background:transparent;color:#8aa0a4;box-shadow:none;
+    border:1px solid rgba(138,160,164,.45);padding:8px 16px;font-size:10px;
+  }
+  #help:hover{color:var(--bone-dim);border-color:var(--bone-dim)}
+  #help:active{transform:none}
+  #rules{
+    position:fixed;inset:0;z-index:10;
+    background:rgba(9,16,18,.82);
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  #rules[hidden]{display:none}
+  #rulesCard{
+    max-width:460px;max-height:88vh;overflow:auto;
+    background:linear-gradient(170deg,#22363c,#17262b);
+    border:1px solid rgba(159,212,226,.22);border-radius:14px;
+    padding:30px 32px;color:var(--bone-dim);
+    box-shadow:0 30px 60px rgba(0,0,0,.6);
+  }
+  #rulesCard h2{font-size:14px;letter-spacing:.3em;text-transform:uppercase;color:var(--brass);margin-bottom:18px}
+  #rulesCard ol{padding-left:20px;display:grid;gap:12px;font-size:14.5px;line-height:1.55}
+  #rulesCard .score{white-space:nowrap;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--glass)}
+  #rulesCard .fine{margin-top:14px;font-size:12.5px;line-height:1.5;color:#93a6aa}
+  #rulesCard .promise{color:var(--glass)}
+  #closeRules{margin-top:20px;width:100%}
+
+  footer{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#5c6e73;text-align:center}
+</style>
+</head>
+<body>
+
+<header>Word&nbsp;Shaker</header>
+<button id="help" aria-haspopup="dialog">How to play</button>
+
+<div id="rules" role="dialog" aria-modal="true" aria-labelledby="rulesTitle" hidden>
+  <div id="rulesCard">
+    <h2 id="rulesTitle">How to play</h2>
+    <ol>
+      <li>Everyone gets paper and a pencil. One person taps <strong>Shake the board</strong> and sets the phone in the middle of the table.</li>
+      <li>When the dice settle, a 3-minute round begins. Write down every word you can find.</li>
+      <li>Words are built from <strong>adjacent letters</strong> — sideways, up-and-down, or diagonal — each die used at most once per word. Words must be at least 3 letters.</li>
+      <li>When the board dims, pencils down. Read your lists aloud: any word found by two or more players is crossed out by everyone.</li>
+      <li>Score what survives: <span class="score">3–4 letters = 1 &nbsp;·&nbsp; 5 = 2 &nbsp;·&nbsp; 6 = 3 &nbsp;·&nbsp; 7 = 5 &nbsp;·&nbsp; 8+ = 11</span></li>
+    </ol>
+    <p class="fine">The <strong>Qu</strong> die counts as two letters. Underlined letters (M, W, N, Z) show which way is up.</p>
+    <p class="fine promise">This page runs entirely on your device. No internet needed, no cookies, no storage, no tracking, no analytics — just pure fun.</p>
+    <button id="closeRules">Back to the game</button>
+  </div>
+</div>
+
+<div id="stage"><div id="world"><div id="tray"></div><div id="shaker"></div></div></div>
+<div class="bar">
+  <button id="roll">Shake the board</button>
+  <div id="timer" aria-live="polite">
+    <svg viewBox="0 0 64 64" width="64" height="64" aria-hidden="true">
+      <circle class="track" cx="32" cy="32" r="27"/>
+      <circle class="left"  cx="32" cy="32" r="27" pathLength="1"/>
+    </svg>
+    <span id="clock">3:00</span>
+  </div>
+</div>
+<div id="readout"></div>
+<footer>Plays fully offline &nbsp;·&nbsp; no cookies, no storage, no tracking, no analytics</footer>
+
+<script>
+(function(){
+"use strict";
+/* Space matches CSS: +x right, +y DOWN, +z toward viewer.
+   Floor plane y=0; a resting die's centre sits at y=-HALF. */
+
+const S=62, HALF=S/2, CELL=88, BOARD=CELL*4, BX=BOARD/2, BOXH=330;
+const RAD=S*0.55, SEP=S*1.03, GRAV=2600;
+const SHAKE_MS=2300, SETTLE_MS=1500;
+const TILT_SHAKE=-60, TILT_REST=-88;
+
+/* home-game dice set. "Qu" is a single face: the token parser below treats it
+   as one unit, so the pair always travels together on its own face. */
+const DICE_SET=["ANEDZV","BIXOFR","BTLYIA","RWGLIU","DEMACP","DONESW","BAJOQuM","CRLSEA",
+                "GENIVT","NEPISH","GYUEKL","OIAATC","LSPTUE","TDKNUO","YEEIHF","HASOMR"];
+const faceTokens=spec=>spec.match(/Qu|[A-Z]/g);   // "BAJOQuM" -> B,A,J,O,Qu,M
+
+const FACE_TF=["translateZ(31px)","rotateY(180deg) translateZ(31px)",
+               "rotateY(90deg) translateZ(31px)","rotateY(-90deg) translateZ(31px)",
+               "rotateX(90deg) translateZ(31px)","rotateX(-90deg) translateZ(31px)"];
+const FACE_N=[[0,0,1],[0,0,-1],[1,0,0],[-1,0,0],[0,-1,0],[0,1,0]];  // outward normals
+const UP=[0,-1,0];
+
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const dot3=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+function norm3(a){const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];}
+
+function qMul(a,b){return[
+  a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1],
+  a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0],
+  a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3],
+  a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]];}
+function qNorm(q){const l=Math.hypot(q[0],q[1],q[2],q[3])||1;return[q[0]/l,q[1]/l,q[2]/l,q[3]/l];}
+const qConj=q=>[-q[0],-q[1],-q[2],q[3]];
+function qAxisAngle(ax,ang){const a=norm3(ax),s=Math.sin(ang/2);
+  return[a[0]*s,a[1]*s,a[2]*s,Math.cos(ang/2)];}
+function qRandom(){const u1=Math.random(),u2=Math.random(),u3=Math.random();
+  const a=Math.sqrt(1-u1),b=Math.sqrt(u1);
+  return[a*Math.sin(2*Math.PI*u2),a*Math.cos(2*Math.PI*u2),b*Math.sin(2*Math.PI*u3),b*Math.cos(2*Math.PI*u3)];}
+function qIntegrate(q,w,dt){const d=qMul([w[0],w[1],w[2],0],q);
+  return qNorm([q[0]+0.5*d[0]*dt,q[1]+0.5*d[1]*dt,q[2]+0.5*d[2]*dt,q[3]+0.5*d[3]*dt]);}
+function qBetween(u,v){                       // shortest arc taking u onto v
+  const d=dot3(u,v);
+  if(d>0.999999) return [0,0,0,1];
+  if(d<-0.999999){let ax=cross(u,[1,0,0]);
+    if(Math.hypot(ax[0],ax[1],ax[2])<1e-4) ax=cross(u,[0,1,0]);
+    return qAxisAngle(ax,Math.PI);}
+  const c=cross(u,v); return qNorm([c[0],c[1],c[2],1+d]);}
+function qToMatrix3d(q,x,y,z){
+  const [a,b,c,w]=q;
+  const r00=1-2*(b*b+c*c), r01=2*(a*b-c*w), r02=2*(a*c+b*w);
+  const r10=2*(a*b+c*w),   r11=1-2*(a*a+c*c), r12=2*(b*c-a*w);
+  const r20=2*(a*c-b*w),   r21=2*(b*c+a*w),   r22=1-2*(a*a+b*b);
+  return "matrix3d("+r00.toFixed(5)+","+r10.toFixed(5)+","+r20.toFixed(5)+",0,"+
+    r01.toFixed(5)+","+r11.toFixed(5)+","+r21.toFixed(5)+",0,"+
+    r02.toFixed(5)+","+r12.toFixed(5)+","+r22.toFixed(5)+",0,"+
+    x.toFixed(2)+","+y.toFixed(2)+","+z.toFixed(2)+",1)";}
+const easeOutCubic=t=>1-Math.pow(1-t,3);
+const easeInOutCubic=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+
+const world=document.getElementById("world"), tray=document.getElementById("tray"),
+      shaker=document.getElementById("shaker"), readout=document.getElementById("readout"),
+      rollBtn=document.getElementById("roll");
+
+const setTilt=d=>{world.style.transform="rotateX("+d.toFixed(2)+"deg)";};
+
+for(let i=0;i<16;i++){const c=document.createElement("div");c.className="cell";tray.appendChild(c);}
+
+function wall(w,h,tf){const d=document.createElement("div");d.className="glass";
+  d.style.cssText="position:absolute;width:"+w+"px;height:"+h+"px;left:"+(-w/2)+"px;top:"+(-h/2)+"px;";
+  d.style.transform=tf;shaker.appendChild(d);}
+wall(BOARD,BOXH,"translate3d(0px,"+(-BOXH/2)+"px,"+(-BX)+"px)");
+wall(BOARD,BOXH,"translate3d(0px,"+(-BOXH/2)+"px,"+(BX)+"px)");
+wall(BOARD,BOXH,"translate3d("+(-BX)+"px,"+(-BOXH/2)+"px,0px) rotateY(90deg)");
+wall(BOARD,BOXH,"translate3d("+(BX)+"px,"+(-BOXH/2)+"px,0px) rotateY(90deg)");
+wall(BOARD,BOARD,"translate3d(0px,"+(-BOXH)+"px,0px) rotateX(90deg)");
+
+const MARKED={M:1,W:1,N:1,Z:1};
+const dice=[];
+function shuffled(arr){const a=arr.slice();
+  for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[a[i],a[j]]=[a[j],a[i]];}return a;}
+
+DICE_SET.forEach(spec=>{
+  const el=document.createElement("div"); el.className="die";
+  const letters=shuffled(faceTokens(spec));          // token -> face, randomised per cube
+  if(letters.length!==6) console.warn("Die '"+spec+"' has "+letters.length+" faces, expected 6");
+  letters.forEach((ch,f)=>{
+    const face=document.createElement("div"); face.className="face";
+    face.style.transform=FACE_TF[f];
+    const sp=document.createElement("span");
+    sp.textContent=ch;
+    if(ch==="Qu") sp.className="qu"; else if(MARKED[ch]) sp.className="mark";
+    face.appendChild(sp); el.appendChild(face);
+  });
+  const sh=document.createElement("div"); sh.className="shadow";
+  world.appendChild(sh); world.appendChild(el);
+  dice.push({el,sh,letters,p:[0,0,0],v:[0,0,0],w:[0,0,0],q:[0,0,0,1],
+             p0:null,q0:null,axis:[0,1,0],angle:0,target:[0,0,0],face:0,cell:0});
+});
+
+function resetDice(){
+  dice.forEach((d,i)=>{
+    const col=i%4,row=(i/4)|0;
+    d.p=[(col-1.5)*70+rnd(-14,14), -BOXH*0.55+rnd(-45,45), (row-1.5)*70+rnd(-14,14)];
+    d.v=[rnd(-260,260),rnd(-420,120),rnd(-260,260)];
+    d.w=[rnd(-11,11),rnd(-11,11),rnd(-11,11)];
+    d.q=qRandom();
+  });
+}
+
+/* the box is shaken; in its frame every die feels the same pseudo-force */
+function shakeAccel(t){
+  let env=1;
+  if(t<0.18) env=t/0.18;
+  else if(t>SHAKE_MS/1000-0.5) env=Math.max(0,(SHAKE_MS/1000-t)/0.5);
+  return[ env*(3400*Math.sin(11.3*t)+2100*Math.sin(19.7*t+1.1)),
+          env*(-2900*Math.sin(14.1*t+0.6)-1700*Math.sin(23.3*t)),
+          env*(3400*Math.sin(12.7*t+2.2)+2100*Math.sin(17.9*t+0.4))];
+}
+function kick(d,speed){
+  const s=clamp(speed*0.012,0,9);
+  for(let k=0;k<3;k++) d.w[k]=clamp(d.w[k]+rnd(-s,s),-22,22);
+}
+function collide(){
+  const E=0.55;
+  for(const d of dice){
+    if(d.p[0]<-BX+RAD){d.p[0]=-BX+RAD; if(d.v[0]<0){kick(d,-d.v[0]);d.v[0]*=-E;}}
+    if(d.p[0]> BX-RAD){d.p[0]= BX-RAD; if(d.v[0]>0){kick(d, d.v[0]);d.v[0]*=-E;}}
+    if(d.p[2]<-BX+RAD){d.p[2]=-BX+RAD; if(d.v[2]<0){kick(d,-d.v[2]);d.v[2]*=-E;}}
+    if(d.p[2]> BX-RAD){d.p[2]= BX-RAD; if(d.v[2]>0){kick(d, d.v[2]);d.v[2]*=-E;}}
+    if(d.p[1]>-RAD){d.p[1]=-RAD; if(d.v[1]>0){kick(d,d.v[1]);d.v[1]*=-E;d.v[0]*=0.88;d.v[2]*=0.88;}}
+    if(d.p[1]<-BOXH+RAD){d.p[1]=-BOXH+RAD; if(d.v[1]<0){kick(d,-d.v[1]);d.v[1]*=-E;}}
+  }
+  for(let i=0;i<dice.length;i++) for(let j=i+1;j<dice.length;j++){
+    const a=dice[i],b=dice[j];
+    let nx=b.p[0]-a.p[0],ny=b.p[1]-a.p[1],nz=b.p[2]-a.p[2];
+    let dist=Math.hypot(nx,ny,nz);
+    if(dist>=SEP) continue;
+    if(dist<1e-4){nx=rnd(-1,1);ny=rnd(-1,1);nz=rnd(-1,1);dist=Math.hypot(nx,ny,nz)||1;}
+    nx/=dist;ny/=dist;nz/=dist;
+    const push=(SEP-dist)/2;
+    a.p[0]-=nx*push;a.p[1]-=ny*push;a.p[2]-=nz*push;
+    b.p[0]+=nx*push;b.p[1]+=ny*push;b.p[2]+=nz*push;
+    const rv=(b.v[0]-a.v[0])*nx+(b.v[1]-a.v[1])*ny+(b.v[2]-a.v[2])*nz;
+    if(rv>0) continue;
+    const imp=-(1+0.42)*rv/2;
+    a.v[0]-=imp*nx;a.v[1]-=imp*ny;a.v[2]-=imp*nz;
+    b.v[0]+=imp*nx;b.v[1]+=imp*ny;b.v[2]+=imp*nz;
+    kick(a,-rv);kick(b,-rv);
+  }
+}
+
+function planLanding(){
+  // cells claim their nearest unassigned die: positions are already chaotic,
+  // so this is a random pairing that also avoids silly crossings
+  const cells=[];
+  for(let i=0;i<16;i++) cells.push([(i%4-1.5)*CELL, (((i/4)|0)-1.5)*CELL, i]);
+  const free=dice.slice();
+  for(const c of shuffled(cells)){
+    let best=0,bd=Infinity;
+    free.forEach((d,k)=>{const dd=(d.p[0]-c[0])**2+(d.p[2]-c[1])**2; if(dd<bd){bd=dd;best=k;}});
+    const d=free.splice(best,1)[0];
+    d.target=[c[0],-HALF,c[1]]; d.cell=c[2];
+  }
+  for(const d of dice){
+    const f=(Math.random()*6)|0;                       // random face up
+    const spin=((Math.random()*4)|0)*Math.PI/2;        // random quarter turn
+    d.face=f;
+    const qT=qMul(qAxisAngle(UP,spin), qBetween(FACE_N[f],UP));
+    d.p0=d.p.slice(); d.q0=d.q.slice();
+    let delta=qMul(qT,qConj(d.q0));
+    if(delta[3]<0) delta=[-delta[0],-delta[1],-delta[2],-delta[3]];
+    const s=Math.hypot(delta[0],delta[1],delta[2]);
+    if(s<1e-5){d.axis=[0,1,0];d.angle=0;}
+    else{d.axis=[delta[0]/s,delta[1]/s,delta[2]/s]; d.angle=2*Math.atan2(s,delta[3]);}
+    d.angle+=2*Math.PI*(1+((Math.random()*2)|0));      // extra whole turns: still exact
+  }
+}
+
+function applySettle(tt){
+  const flight=clamp(tt/0.82,0,1), e=easeOutCubic(flight);
+  for(const d of dice){
+    d.p[0]=d.p0[0]+(d.target[0]-d.p0[0])*e;
+    d.p[2]=d.p0[2]+(d.target[2]-d.p0[2])*e;
+    let y=d.p0[1]+(d.target[1]-d.p0[1])*e-55*Math.sin(Math.PI*flight);
+    if(tt>0.82){const b=(tt-0.82)/0.18; y=-HALF-15*Math.sin(Math.PI*b);}
+    d.p[1]=y;
+    d.q=qMul(qAxisAngle(d.axis,d.angle*easeOutCubic(clamp(tt,0,1))),d.q0);
+  }
+}
+
+function render(){
+  for(const d of dice){
+    d.el.style.transform=qToMatrix3d(d.q,d.p[0],d.p[1],d.p[2]);
+    const h=clamp(-d.p[1]/BOXH,0,1), sc=1.05-h*0.45;
+    d.sh.style.transform="translate3d("+d.p[0].toFixed(1)+"px,-2px,"+d.p[2].toFixed(1)+
+                         "px) rotateX(90deg) scale("+sc.toFixed(3)+")";
+    d.sh.style.opacity=(0.55-h*0.45).toFixed(3);
+  }
+}
+
+let phase="idle", t0=0, acc=0, last=0;
+const DT=1/120;
+function frame(now){
+  if(!last) last=now;
+  let dt=(now-last)/1000; last=now;
+  if(dt>0.05) dt=0.05;
+
+  if(phase==="shake"){
+    acc+=dt;
+    setTilt(TILT_REST+(TILT_SHAKE-TILT_REST)*easeOutCubic(clamp((now-t0)/600,0,1)));
+    while(acc>=DT){
+      const sa=shakeAccel((now-t0)/1000);
+      for(const d of dice){
+        d.v[0]+=sa[0]*DT; d.v[1]+=(GRAV+sa[1])*DT; d.v[2]+=sa[2]*DT;
+        d.p[0]+=d.v[0]*DT; d.p[1]+=d.v[1]*DT; d.p[2]+=d.v[2]*DT;
+        d.q=qIntegrate(d.q,d.w,DT);
+      }
+      collide(); acc-=DT;
+    }
+    if(now-t0>=SHAKE_MS){ planLanding(); phase="settle"; t0=now; shaker.classList.add("hidden"); }
+  } else if(phase==="settle"){
+    const tt=clamp((now-t0)/SETTLE_MS,0,1);
+    applySettle(tt);
+    setTilt(TILT_SHAKE+(TILT_REST-TILT_SHAKE)*easeInOutCubic(tt));
+    if(tt>=1) phase="done";
+  }
+
+  render();
+  if(phase==="shake"||phase==="settle") requestAnimationFrame(frame);
+  else finish();
+}
+
+/* ---------------- how-to-play modal ---------------- */
+const rules=document.getElementById("rules"),
+      helpBtn=document.getElementById("help"),
+      closeBtn=document.getElementById("closeRules");
+helpBtn.addEventListener("click",()=>{rules.hidden=false;closeBtn.focus();});
+closeBtn.addEventListener("click",()=>{rules.hidden=true;helpBtn.focus();});
+rules.addEventListener("click",e=>{if(e.target===rules){rules.hidden=true;helpBtn.focus();}});
+document.addEventListener("keydown",e=>{
+  if(e.key==="Escape"&&!rules.hidden){rules.hidden=true;helpBtn.focus();}
+});
+
+/* ---------------- keep the screen awake during a round ----------------
+   A 3-minute round with nobody touching the phone is exactly when screens
+   auto-lock. Best effort: silently does nothing where unsupported. */
+let wakeLock=null;
+async function holdScreen(){
+  try{ if("wakeLock" in navigator) wakeLock=await navigator.wakeLock.request("screen"); }
+  catch(e){ wakeLock=null; }
+}
+function releaseScreen(){
+  if(wakeLock){ wakeLock.release().catch(()=>{}); wakeLock=null; }
+}
+document.addEventListener("visibilitychange",()=>{     // re-acquire after tab switch
+  if(document.visibilityState==="visible" && timerId) holdScreen();
+});
+
+/* ---------------- end-of-round chime ----------------
+   Synthesised on the fly with WebAudio: no audio files, works offline.
+   Created inside the click handler so autoplay policies are satisfied. */
+let audioCtx=null;
+function chime(){
+  if(!audioCtx) return;
+  const t=audioCtx.currentTime;
+  [523.25,659.25,784.0].forEach((f,i)=>{                // C5-E5-G5, gentle
+    const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type="sine"; o.frequency.value=f;
+    g.gain.setValueAtTime(0,t+i*0.12);
+    g.gain.linearRampToValueAtTime(0.18,t+i*0.12+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001,t+i*0.12+0.9);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t+i*0.12); o.stop(t+i*0.12+1);
+  });
+}
+
+function finish(){
+  rollBtn.disabled=false;
+  const grid=Array(16).fill("");
+  for(const d of dice) grid[d.cell]=d.letters[d.face];   // tokens are display-ready ("Qu" included)
+  let out="";
+  for(let r=0;r<4;r++) out+=grid.slice(r*4,r*4+4).map(s=>s.padEnd(2," ")).join(" ").trimEnd()+"\n";
+  readout.textContent=out.trimEnd();
+  if(phase==="done") startTimer();          // real roll settled; the opening pose skips this
+}
+
+/* ---------------- 3-minute round timer ---------------- */
+const ROUND_S=180;
+const timerEl=document.getElementById("timer"),
+      clockEl=document.getElementById("clock"),
+      leftArc=timerEl.querySelector(".left");
+let timerId=null;
+
+function stopTimer(){
+  if(timerId){clearInterval(timerId);timerId=null;}
+  timerEl.classList.remove("on","late");
+  world.classList.remove("over");
+  releaseScreen();
+}
+function startTimer(){
+  stopTimer();
+  timerEl.classList.add("on");
+  holdScreen();
+  const end=performance.now()+ROUND_S*1000;
+  const tick=()=>{
+    const left=Math.max(0,(end-performance.now())/1000);
+    const total=Math.ceil(left), m=(total/60)|0, s=total%60;
+    clockEl.textContent=m+":"+String(s).padStart(2,"0");
+    leftArc.style.strokeDashoffset=(1-left/ROUND_S).toFixed(4);
+    if(left<=15) timerEl.classList.add("late");
+    if(left<=0){
+      clearInterval(timerId);timerId=null;
+      world.classList.add("over");           // dim faces, letters stay readable
+      clockEl.textContent="0:00";
+      chime();
+      releaseScreen();
+    }
+  };
+  tick();
+  timerId=setInterval(tick,200);
+}
+
+rollBtn.addEventListener("click",function(){
+  if(!audioCtx){
+    try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+  }
+  if(audioCtx&&audioCtx.state==="suspended") audioCtx.resume().catch(()=>{});
+  rollBtn.disabled=true; readout.textContent="";
+  stopTimer();                                // clear any running round + un-dim
+  shaker.classList.remove("hidden");
+  resetDice();
+  phase="shake"; t0=performance.now(); last=0; acc=0;
+  requestAnimationFrame(frame);
+});
+
+/* opening pose so the page is never empty */
+resetDice(); planLanding(); applySettle(1); shaker.classList.add("hidden");
+setTilt(TILT_REST); render(); finish();
+})();
+</script>
+</body>
+</html>
